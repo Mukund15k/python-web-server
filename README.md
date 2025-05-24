@@ -37,7 +37,7 @@ project-root/
 4. Use Ansible playbook to harden the EC2 instance.
 5. Configure Jenkins with AWS credentials and SSH key.
 6. Run Jenkins pipeline to deploy Flask app.
-7. Access Flask app at `http://<EC2_PUBLIC_IP>:5000`
+7. Access Flask app at `http://65.0.76.159/`
 
 ---
 
