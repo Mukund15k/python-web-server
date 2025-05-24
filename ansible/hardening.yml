@@ -1,0 +1,100 @@
+- name: Apply CIS hardening to Ubuntu EC2
+  hosts: all
+  become: yes
+  vars:
+    login_banner: "Authorized access only. This system is monitored."
+    password_max_days: 90
+
+  tasks:
+
+    - name: Ensure /var/log is a separate partition
+      shell: mount | grep '/var/log'
+      register: varlog
+      failed_when: false
+      changed_when: false
+      tags: varlog
+
+    - name: warn if /var/log is not a seperate partition
+      debug:
+        msg: "/var/log is not a seperate partition. please consider configuring it."
+      when: varlog.stdout == ""
+      tags: varlog
+
+    - name: Disable IP forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: 0
+        state: present
+        sysctl_set: yes
+        reload: yes
+      tags: ip_forward
+
+    - name: Disable secure ICMP redirects
+      sysctl:
+        name: net.ipv4.conf.all.accept_redirects
+        value: 0
+        state: present
+        sysctl_set: yes
+        reload: yes
+      tags: icmp_redirects
+
+    - name: Disable IPv6
+      sysctl:
+        name: net.ipv6.conf.all.disable_ipv6
+        value: 1
+        state: present
+        sysctl_set: yes
+        reload: yes
+      tags: ipv6
+
+    - name: Configure login warning banner
+      copy:
+        content: "{{ login_banner }}"
+        dest: /etc/issue.net
+        owner: root
+        group: root
+        mode: '0644'
+      tags: banner
+
+    - name: Ensure banner is shown at login via SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^Banner'
+        line: 'Banner /etc/issue.net'
+      notify: Restart SSH
+      tags: banner
+
+    - name: Collect login/logout events
+      lineinfile:
+        path: /etc/audit/rules.d/audit.rules
+        line: "-w /var/log/lastlog -p wa -k logins"
+        create: yes
+      tags: audit_login
+
+    - name: Collect file deletion events
+      lineinfile:
+        path: /etc/audit/rules.d/audit.rules
+        line: "-a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -k delete"
+        create: yes
+      tags: audit_delete
+
+    - name: Ensure password expiration is 90 days or less
+      lineinfile:
+        path: /etc/login.defs
+        regexp: '^PASS_MAX_DAYS'
+        line: "PASS_MAX_DAYS {{ password_max_days }}"
+      tags: password_expire
+
+    - name: Set SSH log level to INFO
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^LogLevel'
+        line: 'LogLevel INFO'
+      notify: Restart SSH
+      tags: ssh
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: ssh
+        state: restarted
