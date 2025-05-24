@@ -1,0 +1,37 @@
+name: CI/CD with GitHub Actions
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.SSH_KEY }}
+
+    - name: Copy app to server
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          mkdir -p ~/project-root
+        EOF
+
+        rsync -avz --exclude '.git' ./ ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/project-root/
+
+    - name: Build and Run Docker container
+      run: |
+        ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd ~/project-root
+          docker stop flaskapp || true
+          docker rm flaskapp || true
+          docker build -t flaskapp -f docker/Dockerfile .
+          docker run -d -p 80:5000 --name flaskapp flaskapp
+        EOF
